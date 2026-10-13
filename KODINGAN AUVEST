@@ -1,0 +1,106 @@
+#define BLYNK_TEMPLATE_ID "TMPL6GBpb4Q7q"
+#define BLYNK_TEMPLATE_NAME "AUVEST"
+#define BLYNK_PRINT Serial
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include <DHT.h>
+
+// Pin untuk DS18B20
+#define ONE_WIRE_BUS D7
+
+// Mengatur OneWire instance untuk komunikasi
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Mengatur DallasTemperature instance untuk menggunakan OneWire
+DallasTemperature sensors(&oneWire);
+
+// DHT11 setup pin
+#define DHTPIN D4
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+char auth[] = "ZfuqYn3ymBX-t_PJCpfPl9X-j_ZS4lIX";
+char ssid[] = "FTMM@AIRLANGGA-HOTSPOT";
+char pass[] = "@irlangg@";
+
+BlynkTimer timer;
+
+void setup() {
+  Serial.begin(115200);
+  Blynk.begin(auth, ssid, pass);
+  sensors.begin();
+  dht.begin();
+  Serial.println("Starting sensors...");
+  timer.setInterval(2000L, readSensors);
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+}
+
+// Fungsi untuk membaca sensor
+void readSensors() {
+  sensors.requestTemperatures();
+  double temperatureC = sensors.getTempCByIndex(0);
+  float humidity = dht.readHumidity();
+
+  if (temperatureC == DEVICE_DISCONNECTED_C) {
+    Serial.println("Failed to read from DS18B20 sensor!");
+    return;
+  }
+  if (isnan(humidity)) {
+    Serial.println("Failed to read from DHT11 sensor!");
+    return;
+  }float RH = humidity/100; // Rothfusz butuh RH dalam persen
+  float temperatureF = temperatureC * 9.0 / 5.0 + 32.0;
+
+  // Hitung HI dengan persamaan Rothfusz (hasil dalam Fahrenheit)
+  float HI_F = calculateHI(temperatureF, RH);
+
+  // Konversi HI ke Celsius
+  float HI_Celsius = (HI_F - 32.0) * 5.0 / 9.0;
+
+  // Tentukan kategori HI
+  String kategoriHI;
+  if (HI_Celsius < 26.7) {
+    kategoriHI = "Normal";
+  } else if (HI_Celsius < 32.2) {
+    kategoriHI = "Caution";
+  } else if (HI_Celsius < 39.4) {
+    kategoriHI = "Extreme Caution";
+  } else if (HI_Celsius < 51.1) {
+    kategoriHI = "Danger";
+  } else {
+    kategoriHI = "Extreme Danger";
+  }
+
+  // Cetak ke Serial Monitor
+  Serial.print("DS18B20 Temp: ");
+  Serial.print(temperatureC);
+  Serial.print(" °C, Humidity: ");
+  Serial.print(humidity);
+  Serial.print(" %, HI: ");
+  Serial.print(HI_Celsius);
+  Serial.print(" °C, Kategori: ");
+  Serial.println(kategoriHI);
+
+  // Kirim ke Blynk
+  Blynk.virtualWrite(V5, temperatureC);       // Suhu
+  Blynk.virtualWrite(V2, humidity);           // Kelembapan
+  Blynk.virtualWrite(V4, HI_Celsius);        // HI °C
+  Blynk.virtualWrite(V6, kategoriHI);        // Kategori
+}
+
+/// Fungsi untuk menghitung Heat Stress Index (HI)
+float calculateHI(float temperatureF, float RH) {
+  return -42.379 + 2.04901523*temperatureF + 10.14333127*RH
+         - 0.22475541*temperatureF*RH - 0.00683783*temperatureF*temperatureF
+         - 0.05481717*RH*RH + 0.00122874*temperatureF*temperatureF*RH
+         + 0.00085282*temperatureF*RH*RH - 0.00000199*temperatureF*temperatureF*RH*RH;
+}
+
+
